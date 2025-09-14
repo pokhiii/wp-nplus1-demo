@@ -64,20 +64,61 @@ function np_get_macro( $product_id, $fact ) {
 // 3. Hook into shop loop to display macros (N+1 simulation)
 add_action( 'woocommerce_after_shop_loop_item_title', 'np_after_shop_loop_item_title' );
 function np_after_shop_loop_item_title() {
-    global $product;
+    global $product, $np_macros_cache;
 
     $product_id = $product->get_id();
 
-    // Four separate queries per product
-    $protein  = np_get_macro( $product_id, 'protein' );
-    $carb     = np_get_macro( $product_id, 'carb' );
-    $fat      = np_get_macro( $product_id, 'fat' );
-    $calories = np_get_macro( $product_id, 'calories' );
+    if ( ! isset( $np_macros_cache[ $product_id ] ) ) {
+        return;
+    }
+
+    $macros = $np_macros_cache[ $product_id ];
 
     echo '<div class="np-macros">';
-    echo 'Protein: ' . esc_html( $protein ) . ' | ';
-    echo 'Carbs: ' . esc_html( $carb ) . ' | ';
-    echo 'Fat: ' . esc_html( $fat ) . ' | ';
-    echo 'Calories: ' . esc_html( $calories );
+    echo 'Protein: ' . esc_html( $macros['protein'] ) . ' | ';
+    echo 'Carbs: ' . esc_html( $macros['carb'] ) . ' | ';
+    echo 'Fat: ' . esc_html( $macros['fat'] ) . ' | ';
+    echo 'Calories: ' . esc_html( $macros['calories'] );
     echo '</div>';
 }
+
+
+// Prefetch all macros for products in loop
+add_action( 'woocommerce_before_shop_loop', 'np_prefetch_macros' );
+function np_prefetch_macros() {
+    global $wpdb, $np_macros_cache;
+
+    $np_macros_cache = [];
+
+    // Get product IDs from main query
+    global $wp_query;
+    $product_ids = wp_list_pluck( $wp_query->posts, 'ID' );
+
+    if ( empty( $product_ids ) ) {
+        return;
+    }
+
+    $table_name = $wpdb->prefix . 'product_macros';
+
+    // Batch query
+    // 🔑 Indexing note:
+    // - Always ensure columns used in WHERE/JOIN have indexes.
+    // - Here: product_id should be indexed (because of WHERE).
+    // - Rule of thumb: if you filter/join/order by a column often → index it.
+    $results = $wpdb->get_results(
+        "SELECT product_id, protein, carb, fat, calories
+         FROM $table_name
+         WHERE product_id IN (" . implode( ',', array_map( 'absint', $product_ids ) ) . ")"
+    );
+
+    // Organize results by product
+    foreach ( $results as $row ) {
+        $np_macros_cache[ $row->product_id ] = [
+            'protein'  => $row->protein,
+            'carb'     => $row->carb,
+            'fat'      => $row->fat,
+            'calories' => $row->calories,
+        ];
+    }
+}
+
