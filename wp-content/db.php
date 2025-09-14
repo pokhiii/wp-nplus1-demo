@@ -1,0 +1,1 @@
+/Users/pokhi/Documents/Projects/2HMG/wp-nplus1-demo/wp-content/plugins/query-monitor/wp-content/db.php
